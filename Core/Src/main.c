@@ -90,16 +90,16 @@ RTC_HandleTypeDef   hrtc;
 char usr_msg[250] = {0};
 uint8_t cmd_buffer[20];
 uint8_t cmd_len = 0;
-
+uint8_t byte = 0;
 // Menu
 char menu[] = {"\
 \r\nLED_ON					----> 1\
 \r\nLED_OFF					----> 2\
 \r\nLED_TOGGLE				----> 3\
 \r\nLED_TOGGLE_OFF			----> 4\
-\r\nLED_READ_STATUS			----> 5\
+\r\nLED_READ_STATUS		----> 5\
 \r\nRTC_PRINT_DATETIME		----> 6\
-\r\nEXIT					----> 0\
+\r\nEXIT						----> 0\
 \r\nType your option here: "};
 
 /* USER CODE END PV */
@@ -161,7 +161,7 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Receive_IT(&huart2, &byte, 1);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */

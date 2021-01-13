@@ -56,7 +56,7 @@ void DebugMon_Handler(void);
 void SysTick_Handler(void);
 void USART2_IRQHandler(void);
 /* USER CODE BEGIN EFP */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *);
 /* USER CODE END EFP */
 
 #ifdef __cplusplus

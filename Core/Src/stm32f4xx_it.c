@@ -64,6 +64,7 @@ extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 extern uint8_t cmd_buffer[];
 extern uint8_t cmd_len;
+extern uint8_t byte;
 
 extern osThreadId menuDisplayTaskHandle;
 extern osThreadId cmdHandlingTaskHandle;
@@ -200,29 +201,14 @@ void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
 
-	uint8_t data_byte = 0;
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-	// Which event occurs
-	HAL_UART_Receive_IT( &huart2, &data_byte, 100 );
 
-  cmd_buffer[cmd_len++] = data_byte & 0xFF;
+//	/* Transmit one byte with 100 ms timeout */
+//	HAL_UART_Transmit(&huart2, &byte, 1, 100);
 
-  if (data_byte == '\r'){
-	  HAL_UART_Transmit(&huart2, (uint8_t *)cmd_buffer, cmd_len, osWaitForever);
-	cmd_len = 0;
-	// user finished entering data
-	// Notify cmd handing task
+//	/* Receive one byte in interrupt mode */
+//	HAL_UART_Receive_IT(&huart2, &byte, 1);
 
-	xTaskNotifyFromISR( menuDisplayTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
-
-	xTaskNotifyFromISR(cmdHandlingTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
-  }
-
-  // yield task
-	if (xHigherPriorityTaskWoken){
-		taskYIELD();
-	}
 
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
@@ -233,6 +219,46 @@ void USART2_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/* This callback is called by the HAL_UART_IRQHandler when the given number of bytes are received */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2)
+  {
+
+
+//  /* Transmit one byte with 100 ms timeout */
+//	  HAL_UART_Transmit(&huart2, &byte, 1, 100);
+	/* Receive one byte in interrupt mode */
+	HAL_UART_Receive_IT(&huart2, &byte, 1);
+	cmd_buffer[cmd_len++] = byte & 0xFF;
+
+	if (byte == '\r'){
+		// Clear old commands
+		uint8_t i = cmd_len;
+		while (i < 20){
+			cmd_buffer[i] = 0;
+			i++;
+		}
+
+		// Response to confirm message received
+		char msg[50] = "\r\nYour command is: \"";
+		HAL_UART_Transmit(&huart2, &msg, sizeof(msg), 100);
+		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
+		char msg1[50] = "\".\r\n";
+		HAL_UART_Transmit(&huart2, &msg1, sizeof(msg1), 100);
+
+	    cmd_len = 0;
+
+
+	    // user finished entering data
+	    // Notify cmd handing task
+	    xTaskNotifyFromISR( menuDisplayTaskHandle, 0, eNoAction, 0);
+
+//	    xTaskNotifyFromISR(cmdHandlingTaskHandle, 0, eNoAction, 0);
+	  }
+
+  }
+}
 
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
