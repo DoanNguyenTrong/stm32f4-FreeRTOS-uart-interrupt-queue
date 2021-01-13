@@ -161,7 +161,11 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
+
+  // This is needed to wake up UART interrupt
+  // It's format has to be consistent with one in HAL_UART_RxCpltCallback
   HAL_UART_Receive_IT(&huart2, &byte, 1);
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
