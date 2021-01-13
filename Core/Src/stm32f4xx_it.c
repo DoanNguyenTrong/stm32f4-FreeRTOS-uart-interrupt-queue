@@ -225,25 +225,27 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   if (huart->Instance == USART2)
   {
 
+	  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
 //  /* Transmit one byte with 100 ms timeout */
 //	  HAL_UART_Transmit(&huart2, &byte, 1, 100);
 	/* Receive one byte in interrupt mode */
 	HAL_UART_Receive_IT(&huart2, &byte, 1);
+
 	cmd_buffer[cmd_len++] = byte & 0xFF;
 
 	if (byte == '\r'){
-		// Clear old commands
-		uint8_t i = cmd_len;
-		while (i < 20){
-			cmd_buffer[i] = 0;
-			i++;
-		}
-
 		// Response to confirm message received
-		char msg[50] = "\r\nYour command is: \"";
+		char msg[50] = "\rYour command is: \"";
 		HAL_UART_Transmit(&huart2, &msg, sizeof(msg), 100);
-		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
+
+		// There is a '\n' at cmd_buffer[0]
+		if (cmd_buffer[0] == '\n'){
+			HAL_UART_Transmit(&huart2, &cmd_buffer[1], cmd_len-2, 100);
+		}
+		else{
+			HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
+		}
 		char msg1[50] = "\".\r\n";
 		HAL_UART_Transmit(&huart2, &msg1, sizeof(msg1), 100);
 
@@ -252,10 +254,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 	    // user finished entering data
 	    // Notify cmd handing task
-	    xTaskNotifyFromISR( menuDisplayTaskHandle, 0, eNoAction, 0);
+	    xTaskNotifyFromISR( menuDisplayTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
 
-//	    xTaskNotifyFromISR(cmdHandlingTaskHandle, 0, eNoAction, 0);
-	  }
+	    xTaskNotifyFromISR(cmdHandlingTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
+  }
+	// yield
+	if (xHigherPriorityTaskWoken){
+		taskYIELD();
+	}
 
   }
 }
