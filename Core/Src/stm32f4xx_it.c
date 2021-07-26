@@ -241,11 +241,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 		// There is a '\n' at cmd_buffer[0]
 		if (cmd_buffer[0] == '\n'){
-			HAL_UART_Transmit(&huart2, &cmd_buffer[1], cmd_len-2, 100);
+			cmd_buffer[0] = cmd_buffer[1];
+//			cmd_buffer[cmd_len-1] = '\0';
+//			cmd_buffer[cmd_len-2] = '\0';
 		}
-		else{
-			HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
-		}
+
+		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-2, 100);
 		char msg1[50] = "\".\r\n";
 		HAL_UART_Transmit(&huart2, &msg1, sizeof(msg1), 100);
 
@@ -253,9 +254,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 
 	    // user finished entering data
-	    // Notify cmd handing task
+	    // Notify menu display task
 	    xTaskNotifyFromISR( menuDisplayTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
-
+	    // Notify cmd handing task
 	    xTaskNotifyFromISR(cmdHandlingTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
   }
 	// yield

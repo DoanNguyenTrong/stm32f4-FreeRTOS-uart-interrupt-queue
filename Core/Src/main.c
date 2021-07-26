@@ -99,7 +99,7 @@ char menu[] = {"\
 \r\nLED_TOGGLE_OFF			----> 4\
 \r\nLED_READ_STATUS		----> 5\
 \r\nRTC_PRINT_DATETIME		----> 6\
-\r\nEXIT						----> 0\
+\r\nEXIT						----> 7\
 \r\nType your option here: "};
 
 /* USER CODE END PV */
@@ -437,6 +437,7 @@ uint8_t arraySize(char * array) {
 	while (array[i] != '\0') i++;
 	return i;
 }
+
 void printMsg(char *msg)
 {
 	uint8_t length = arraySize(msg);
@@ -503,13 +504,12 @@ void print_error_msg(char *task_msg){
  * @retval uint8_t value
  */
 uint8_t getCommandCode(uint8_t *buffer){
-	return buffer[0]-48;  // ASCI char to uint8_t
+	//return buffer - 48;  // ASCI char to uint8_t
+	return buffer[0] - 48;  // ASCI char to uint8_t
 }
 
 void getArguments(uint8_t *buffer){
 }
-
-
 
 
 /* USER CODE END 4 */
@@ -545,22 +545,52 @@ void StartCmdHandling(void const * argument)
 {
   /* USER CODE BEGIN StartCmdHandling */
   /* Infinite loop */
+	// REF: https://www.keil.com/pack/doc/cmsis/RTOS/html/group__CMSIS__RTOS__Mail.html
 	uint8_t command_code = 0;
 	CMD_t *new_cmd;
   for(;;)
   {
 	// Wait for someone to notify
 	xTaskNotifyWait(0,0,NULL, portMAX_DELAY);
+
 	// Create new_cmd and allocate memory
-	new_cmd = (CMD_t *) pvPortMalloc( sizeof(CMD_t));
+	//new_cmd = (CMD_t *) pvPortMalloc( sizeof(CMD_t));
+	new_cmd = osMailAlloc(cmdQueueHandle, osWaitForever);       // Allocate memory
+
+
+
 	taskENTER_CRITICAL(); // disable interrupt
-	command_code = getCommandCode(cmd_buffer);
+
+	uint8_t pos = 0;
+	while (cmd_buffer[pos] == '\r' || cmd_buffer[pos] == '\n'){
+		pos ++;
+	}
+
+	// Display cmd_buffer
+	// DEBUGGING
+//	sprintf(usr_msg, "\r\ncmd_buffer %d-%d-%s.\r\n", pos,(uint8_t)cmd_buffer[pos],cmd_buffer);
+//	printMsg(usr_msg);
+
+
+	command_code = (uint8_t)cmd_buffer[pos] - 48;
 	new_cmd->CMD_NUM = command_code;
+
+	// Open function for future features
 	getArguments(new_cmd->CMD_ARGS);
+
+	/*
+	 * Show code to screen
+	 */
+
+	sprintf(usr_msg, "\r\nTask in queue: %d\r\n", new_cmd->CMD_NUM);
+	printMsg(usr_msg);
+
 	taskEXIT_CRITICAL();
-	osMailPut(cmdQueueHandle, &new_cmd );
-	vPortFree(new_cmd);
-//	    osDelay(1);
+
+	// Put command to queue
+	osMailPut(cmdQueueHandle, new_cmd);                         // Send Mail
+	osThreadYield();
+
   }
   /* USER CODE END StartCmdHandling */
 }
@@ -577,34 +607,44 @@ void StartCmdProcessing(void const * argument)
   /* USER CODE BEGIN StartCmdProcessing */
   /* Infinite loop */
 	char task_msg[50];
-	uint16_t toggle_duration = 500;
+	uint16_t toggle_duration = 1000;
+	osEvent event;
+	CMD_t *new_cmd;
+
 	while(1){
-	osEvent event = osMailGet(cmdQueueHandle, osWaitForever);
-	CMD_t *new_cmd = (CMD_t *)event.value.p;
-		switch (new_cmd->CMD_NUM){
-		case LED_ON_CMD:
-			make_led_on();
+		event = osMailGet(cmdQueueHandle, osWaitForever);  // wait for mail
+		if (event.status == osEventMail) {
+			new_cmd = event.value.p;
+
+			sprintf(usr_msg, "\r\nExecuting task %d ...\r\n", new_cmd->CMD_NUM);
+			printMsg(usr_msg);
+
+			switch (new_cmd->CMD_NUM){
+			case LED_ON_CMD:
+				make_led_on();
+				break;
+			case LED_OFF_CMD:
+				make_led_off();
 			break;
-		case LED_OFF_CMD:
-			make_led_off();
-		break;
-		case LED_TOGGLE_CMD:
-			led_toggle_start(toggle_duration);
-			break;
-		case LED_TOGGLE_OFF_CMD:
-			led_toggle_stop();
-			break;
-		case LED_READ_STATUS_CMD:
-			read_led_status(task_msg);
-			break;
-		case RTC_PRINT_DATETIME:
-			rtc_print_status(task_msg);
-			break;
-		default:
-			print_error_msg(task_msg);
-			break;
+			case LED_TOGGLE_CMD:
+				led_toggle_start(toggle_duration);
+				break;
+			case LED_TOGGLE_OFF_CMD:
+				led_toggle_stop();
+				break;
+			case LED_READ_STATUS_CMD:
+				read_led_status(task_msg);
+				break;
+			case RTC_PRINT_DATETIME:
+				rtc_print_status(task_msg);
+				break;
+			default:
+				print_error_msg(task_msg);
+				break;
+			}
+
+			osMailFree(cmdQueueHandle, new_cmd);  // free memory allocated for mail
 		}
-		osMailFree(cmdQueueHandle, new_cmd);
 	}
   /* USER CODE END StartCmdProcessing */
 }
@@ -625,6 +665,7 @@ void StartUartWrite(void const * argument)
 		osEvent event = osMailGet(uartQueueHandle, osWaitForever);
 		char *received = (char *)event.value.p;
 		if (event.status == osOK || event.status == osEventMail){
+			printMsg( "\r\n===========Application===========\r\n" );
 		  printMsg( received );
 		}
 		else{
@@ -633,11 +674,6 @@ void StartUartWrite(void const * argument)
 		}
 		// Free the memory block to be reused
 		osMailFree(uartQueueHandle, received);
-
-//		// Debugging
-//		sprintf(usr_msg, "\r\nUART Write task.!!\r\n");
-//		printMsg( usr_msg );
-//		vTaskDelay(1000);
 
 	  }
   /* USER CODE END StartUartWrite */

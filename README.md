@@ -1,4 +1,4 @@
-## STM32F4 Asynchronous Interrupt (both Receive/Transmit) + Free RTOS application
+## STM32F4 Asynchronous Interrupt (both Receive/Transmit) + Free RTOS queue application
 
 #stm32f4, #hal, #uart, #stm32cube, #stm32cubeide, #rtos, #freertos
 
