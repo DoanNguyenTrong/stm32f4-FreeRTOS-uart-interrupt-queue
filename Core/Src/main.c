@@ -173,6 +173,8 @@ int main(void)
   // It's format has to be consistent with one in HAL_UART_RxCpltCallback
   HAL_UART_Receive_IT(&huart2, &byte, 1);
 
+  HAL_ADC_Start_IT(&hadc1); // Start ADC1 under Interrupt
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */

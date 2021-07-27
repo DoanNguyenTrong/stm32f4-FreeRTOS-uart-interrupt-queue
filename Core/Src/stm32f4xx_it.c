@@ -46,6 +46,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 
+uint16_t adc_value;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +73,7 @@ extern osThreadId cmdHandlingTaskHandle;
 extern osThreadId cmdProcessingTaHandle;
 extern osThreadId uartWriteTaskHandle;
 
+extern void printMsg(char *msg);
 
 /* USER CODE END EV */
 
@@ -231,6 +234,24 @@ void USART2_IRQHandler(void)
 
   /* USER CODE END USART2_IRQn 1 */
 }
+
+
+/* USER CODE BEGIN 0 */
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc1)
+{
+	adc_value = HAL_ADC_GetValue(hadc1);
+	char usr_msg[250];
+	sprintf(usr_msg,"\n\r ADC val == %d", adc_value);
+	printMsg(usr_msg);
+
+	HAL_ADC_Start_IT(hadc1); // Re-Start ADC1 under Interrupt
+                         // this is necessary because we don'use
+                         // the Continuos Conversion Mode
+}
+
+/* USER CODE END 0 */
+
 
 /* USER CODE BEGIN 1 */
 /* This callback is called by the HAL_UART_IRQHandler when the given number of bytes are received */
