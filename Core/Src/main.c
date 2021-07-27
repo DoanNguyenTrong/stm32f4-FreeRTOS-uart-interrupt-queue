@@ -71,6 +71,8 @@ typedef struct CMD {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 RTC_HandleTypeDef hrtc;
 
 UART_HandleTypeDef huart2;
@@ -79,10 +81,13 @@ osThreadId menuDisplayTaskHandle;
 osThreadId cmdHandlingTaskHandle;
 osThreadId cmdProcessingTaHandle;
 osThreadId uartWriteTaskHandle;
+//osMessageQId uartQueueHandle;
+//osMessageQId cmdQueueHandle;
+
+/* USER CODE BEGIN PV */
 
 osMailQId uartQueueHandle;
 osMailQId cmdQueueHandle;
-/* USER CODE BEGIN PV */
 
 TimerHandle_t timerHandle = NULL;
 
@@ -109,6 +114,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_RTC_Init(void);
+static void MX_ADC1_Init(void);
 void StartMenuTask(void const * argument);
 void StartCmdHandling(void const * argument);
 void StartCmdProcessing(void const * argument);
@@ -157,6 +163,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_RTC_Init();
+  MX_ADC1_Init();
 
   /* Initialize interrupts */
   MX_NVIC_Init();
@@ -182,15 +189,22 @@ int main(void)
 
   /* Create the queue(s) */
   /* definition and creation of uartQueue */
-  osMailQDef(uartQueue, 10, char *);
-  uartQueueHandle = osMailCreate(osMailQ(uartQueue), NULL);
-
-  /* definition and creation of cmdQueue */
-  osMailQDef(cmdQueue, 10, CMD_t *);
-  cmdQueueHandle = osMailCreate(osMailQ(cmdQueue), NULL);
+//  osMessageQDef(uartQueue, 10, char *);
+//  uartQueueHandle = osMessageCreate(osMessageQ(uartQueue), NULL);
+//
+//  /* definition and creation of cmdQueue */
+//  osMessageQDef(cmdQueue, 10, CMD_t *);
+//  cmdQueueHandle = osMessageCreate(osMessageQ(cmdQueue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+
+  osMailQDef(uartQueue, 10, char *);
+  uartQueueHandle = osMailCreate(osMailQ(uartQueue), NULL);
+
+  osMailQDef(cmdQueue, 10, CMD_t *);
+  cmdQueueHandle = osMailCreate(osMailQ(cmdQueue), NULL);
+
   if (uartQueueHandle && cmdQueueHandle){
   /* USER CODE END RTOS_QUEUES */
 
@@ -291,6 +305,55 @@ static void MX_NVIC_Init(void)
   /* USART2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_6;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
 
 }
 
@@ -397,7 +460,6 @@ static void MX_USART2_UART_Init(void)
   * @retval None
   */
 
-/* USER CODE BEGIN 4 */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -414,6 +476,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN 4 */
 
   GPIO_InitTypeDef GPIO_InitStruct_UART2;
 
@@ -559,8 +623,6 @@ void StartCmdHandling(void const * argument)
 	//new_cmd = (CMD_t *) pvPortMalloc( sizeof(CMD_t));
 	new_cmd = osMailAlloc(cmdQueueHandle, osWaitForever);       // Allocate memory
 
-
-
 	taskENTER_CRITICAL(); // disable interrupt
 
 	uint8_t pos = 0;
@@ -596,6 +658,7 @@ void StartCmdHandling(void const * argument)
   }
   /* USER CODE END StartCmdHandling */
 }
+
 
 /* USER CODE BEGIN Header_StartCmdProcessing */
 /**
