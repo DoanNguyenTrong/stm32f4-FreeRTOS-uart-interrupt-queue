@@ -54,7 +54,7 @@ typedef struct CMD {
 
 #define osFeature_MailQ   1
 
-#define osFeature_MailQ   1
+
 #define LED_ON_CMD			 1
 #define LED_OFF_CMD			 2
 #define LED_TOGGLE_CMD		 3
@@ -86,7 +86,7 @@ osMailQId cmdQueueHandle;
 
 TimerHandle_t timerHandle = NULL;
 
-RTC_HandleTypeDef   hrtc;
+//RTC_HandleTypeDef   hrtc;
 char usr_msg[250] = {0};
 uint8_t cmd_buffer[20];
 uint8_t cmd_len = 0;
@@ -396,6 +396,8 @@ static void MX_USART2_UART_Init(void)
   * @param None
   * @retval None
   */
+
+/* USER CODE BEGIN 4 */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -415,6 +417,7 @@ static void MX_GPIO_Init(void)
 
   GPIO_InitTypeDef GPIO_InitStruct_UART2;
 
+
   /**USART2 GPIO Configuration
   PA2     ------> USART2_TX
   PA3     ------> USART2_RX
@@ -429,7 +432,6 @@ static void MX_GPIO_Init(void)
 
 }
 
-/* USER CODE BEGIN 4 */
 
 
 uint8_t arraySize(char * array) {
