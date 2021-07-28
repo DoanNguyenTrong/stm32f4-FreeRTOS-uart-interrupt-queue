@@ -37,6 +37,9 @@
 #include<stdint.h>
 #include<stdio.h>
 
+// Custom queue for int
+#include "queue.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -81,31 +84,43 @@ osThreadId menuDisplayTaskHandle;
 osThreadId cmdHandlingTaskHandle;
 osThreadId cmdProcessingTaHandle;
 osThreadId uartWriteTaskHandle;
+
 //osMessageQId uartQueueHandle;
 //osMessageQId cmdQueueHandle;
-
 /* USER CODE BEGIN PV */
 
 osMailQId uartQueueHandle;
 osMailQId cmdQueueHandle;
 
+// A new thread for ADC handle & control
+osThreadId adcHandlingTaskHandle;
+osMailQId adcQueueHandle;
+node_t *head_queue = NULL;
+uint8_t queue_len  = 0;
+
 TimerHandle_t timerHandle = NULL;
+
 
 //RTC_HandleTypeDef   hrtc;
 char usr_msg[250] = {0};
 uint8_t cmd_buffer[20];
 uint8_t cmd_len = 0;
 uint8_t byte = 0;
+
 // Menu
 char menu[] = {"\
+\r\n===========Application===========\
 \r\nLED_ON					----> 1\
 \r\nLED_OFF					----> 2\
-\r\nLED_TOGGLE				----> 3\
-\r\nLED_TOGGLE_OFF			----> 4\
+\r\nPERIODIC_ON				----> 3\
+\r\nPERIODIC_OFF			----> 4\
 \r\nLED_READ_STATUS		----> 5\
 \r\nRTC_PRINT_DATETIME		----> 6\
 \r\nEXIT						----> 7\
 \r\nType your option here: "};
+
+
+extern uint16_t adc_value;
 
 /* USER CODE END PV */
 
@@ -122,6 +137,8 @@ void StartUartWrite(void const * argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
+
+void StartAdcHandling(void const * argument);
 
 void printMsg(char *msg);
 
@@ -173,7 +190,7 @@ int main(void)
   // It's format has to be consistent with one in HAL_UART_RxCpltCallback
   HAL_UART_Receive_IT(&huart2, &byte, 1);
 
-  HAL_ADC_Start_IT(&hadc1); // Start ADC1 under Interrupt
+  //HAL_ADC_Start_IT(&hadc1); // Start ADC1 under Interrupt
 
   /* USER CODE END 2 */
 
@@ -207,6 +224,10 @@ int main(void)
   osMailQDef(cmdQueue, 10, CMD_t *);
   cmdQueueHandle = osMailCreate(osMailQ(cmdQueue), NULL);
 
+  osMailQDef(adcQueue, 10, uint16_t *);
+  adcQueueHandle = osMailCreate(osMailQ(adcQueue), NULL);
+
+
   if (uartQueueHandle && cmdQueueHandle){
   /* USER CODE END RTOS_QUEUES */
 
@@ -226,6 +247,10 @@ int main(void)
   /* definition and creation of uartWriteTask */
   osThreadDef(uartWriteTask, StartUartWrite, osPriorityNormal, 2, 512);
   uartWriteTaskHandle = osThreadCreate(osThread(uartWriteTask), NULL);
+
+  /* definition and creation of uartWriteTask */
+	osThreadDef(adcHandlingTask, StartAdcHandling, osPriorityNormal, 2, 512);
+	adcHandlingTaskHandle = osThreadCreate(osThread(adcHandlingTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
 	  /* add threads, ... */
@@ -305,7 +330,7 @@ void SystemClock_Config(void)
 static void MX_NVIC_Init(void)
 {
   /* USART2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(USART2_IRQn, 10, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
@@ -461,7 +486,6 @@ static void MX_USART2_UART_Init(void)
   * @param None
   * @retval None
   */
-
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -470,7 +494,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PA5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
@@ -479,7 +503,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN 4 */
+
+/* USER CODE BEGIN 4 */
 
   GPIO_InitTypeDef GPIO_InitStruct_UART2;
 
@@ -518,52 +543,76 @@ void printMsg(char *msg)
 
 void make_led_on(){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+	sprintf(usr_msg, "LED status is: %d\r\n", HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5));
+	osMailPut(uartQueueHandle, &usr_msg );
 }
+
 void make_led_off(){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+	sprintf(usr_msg, "LED status is: %d\r\n", HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5));
+	osMailPut(uartQueueHandle, &usr_msg );
 }
 
-void led_toggle(TimerHandle_t xTimer){
+
+void periodic_measure(TimerHandle_t xTimer){
+
+	HAL_ADC_Start_IT(&hadc1); // Start ADC1 under Interrupt
+
 	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
 }
 
-void led_toggle_start(uint16_t duration){
+void preriodic_measure_start(uint16_t *pred){
+	osStatus stus;
 	if (timerHandle == NULL){
 		// Create Software Timer
-		timerHandle = xTimerCreate("LED timer", duration, pdTRUE, NULL, led_toggle);
-		osTimerStart(timerHandle, portMAX_DELAY);
+		timerHandle = xTimerCreate("pred_timer", pdMS_TO_TICKS(pred), pdTRUE, NULL, periodic_measure);
+		stus = osTimerStart(timerHandle, portMAX_DELAY);
 	}
 	else{
-		osTimerStart(timerHandle, portMAX_DELAY);
+//		stus = osTimerStart(timerHandle, portMAX_DELAY);
+//		TickType_t prev_pred = xTimerGetPeriod( timerHandle );
+//		sprintf(usr_msg, "\r\nduration=%d\r\n", (int)prev_pred);
+//		osMailPut(uartQueueHandle, &usr_msg );
+
+		xTimerChangePeriod(timerHandle, pdMS_TO_TICKS(pred), portMAX_DELAY);
 	}
+
+//	osTimerStart(timerHandle, portMAX_DELAY);
+
+	sprintf(usr_msg, "\r\nPreriodic measurement with duration=%d , SS=%d\r\n", (int)pred, (int)stus);
+	osMailPut(uartQueueHandle, &usr_msg );
 }
 
 
-void led_toggle_stop(){
+void preriodic_measure_stop(){
 	xTimerStop(timerHandle, portMAX_DELAY);
+	sprintf(usr_msg, "Stop periodic measurement!\r\n");
+	osMailPut(uartQueueHandle, &usr_msg );
 }
 
-void read_led_status(char *task_msg){
-	sprintf(task_msg, "\r\nLED status is: %d\r\n", HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5));
-	osMailPut( uartQueueHandle, &task_msg );
+void read_led_status(){
+	sprintf(usr_msg, "LED status is: %d\r\n", HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5));
+	osMailPut( uartQueueHandle, &usr_msg );
 }
-void rtc_print_status(char *task_msg){
+
+void rtc_print_status(){
 	RTC_TimeTypeDef RTC_time;
 	RTC_DateTypeDef RTC_date;
 
 	HAL_RTC_GetTime( &hrtc, &RTC_time, RTC_FORMAT_BCD);
 	HAL_RTC_GetDate( &hrtc, &RTC_date, RTC_FORMAT_BCD);
 
-	sprintf(task_msg, "\r\nTime: %02d-%02d-%02d\r\nDate: %02d-%02d-%02d\r\n",
+	sprintf(usr_msg, "\r\nTime: %02d-%02d-%02d -- Date: %02d-%02d-%02d\r\n",
           RTC_time.Hours, RTC_time.Minutes, RTC_time.Seconds,
           RTC_date.Month, RTC_date.Date, RTC_date.Year);
-	osMailPut(uartQueueHandle, &task_msg );
+	osMailPut(uartQueueHandle, &usr_msg );
 }
 
 
-void print_error_msg(char *task_msg){
-	sprintf(task_msg, "\r\nInvalid command received\r\n");
-	osMailPut(uartQueueHandle, &task_msg );
+void print_error_msg(){
+	sprintf(usr_msg, "\r\nInvalid command received\r\n");
+	osMailPut(uartQueueHandle, &usr_msg );
 }
 
 /** @brief Convert from ASCI to uint8_t.
@@ -641,8 +690,17 @@ void StartCmdHandling(void const * argument)
 	command_code = (uint8_t)cmd_buffer[pos] - 48;
 	new_cmd->CMD_NUM = command_code;
 
+
 	// Open function for future features
-	getArguments(new_cmd->CMD_ARGS);
+	//getArguments(new_cmd->CMD_ARGS);
+
+	//  set argument
+	new_cmd->CMD_ARGS[0] = (new_cmd->CMD_NUM != 3)? 0:(uint8_t)cmd_buffer[pos+1] - 48;
+	// make sure it in [1, 9]
+	if (new_cmd->CMD_ARGS[0] > 9){
+		new_cmd->CMD_ARGS[0] = 1;
+	}
+
 
 	/*
 	 * Show code to screen
@@ -661,7 +719,6 @@ void StartCmdHandling(void const * argument)
   /* USER CODE END StartCmdHandling */
 }
 
-
 /* USER CODE BEGIN Header_StartCmdProcessing */
 /**
 * @brief Function implementing the cmdProcessingTa thread.
@@ -673,17 +730,17 @@ void StartCmdProcessing(void const * argument)
 {
   /* USER CODE BEGIN StartCmdProcessing */
   /* Infinite loop */
-	char task_msg[50];
-	uint16_t toggle_duration = 1000;
+//	char task_msg[50];
 	osEvent event;
 	CMD_t *new_cmd;
+	uint16_t pred = 0;
 
 	while(1){
 		event = osMailGet(cmdQueueHandle, osWaitForever);  // wait for mail
 		if (event.status == osEventMail) {
 			new_cmd = event.value.p;
 
-			sprintf(usr_msg, "\r\nExecuting task %d ...\r\n", new_cmd->CMD_NUM);
+			sprintf(usr_msg, "\r\nExecuting task \"%d:%d\"...\r\n", new_cmd->CMD_NUM,new_cmd->CMD_ARGS[0]);
 			printMsg(usr_msg);
 
 			switch (new_cmd->CMD_NUM){
@@ -694,19 +751,20 @@ void StartCmdProcessing(void const * argument)
 				make_led_off();
 			break;
 			case LED_TOGGLE_CMD:
-				led_toggle_start(toggle_duration);
+				pred = (uint16_t)(new_cmd->CMD_ARGS[0]*100);
+				preriodic_measure_start(pred);
 				break;
 			case LED_TOGGLE_OFF_CMD:
-				led_toggle_stop();
+				preriodic_measure_stop();
 				break;
 			case LED_READ_STATUS_CMD:
-				read_led_status(task_msg);
+				read_led_status();
 				break;
 			case RTC_PRINT_DATETIME:
-				rtc_print_status(task_msg);
+				rtc_print_status();
 				break;
 			default:
-				print_error_msg(task_msg);
+				print_error_msg();
 				break;
 			}
 
@@ -715,6 +773,8 @@ void StartCmdProcessing(void const * argument)
 	}
   /* USER CODE END StartCmdProcessing */
 }
+
+
 
 /* USER CODE BEGIN Header_StartUartWrite */
 /**
@@ -732,7 +792,6 @@ void StartUartWrite(void const * argument)
 		osEvent event = osMailGet(uartQueueHandle, osWaitForever);
 		char *received = (char *)event.value.p;
 		if (event.status == osOK || event.status == osEventMail){
-			printMsg( "\r\n===========Application===========\r\n" );
 		  printMsg( received );
 		}
 		else{
@@ -745,6 +804,68 @@ void StartUartWrite(void const * argument)
 	  }
   /* USER CODE END StartUartWrite */
 }
+
+
+/* USER CODE BEGIN Header_StartAdcHandling */
+/**
+* @brief Function implementing the StartAdcHandling thread.
+* @param argument: Not used
+* @retval None
+*/
+
+void StartAdcHandling(void const * argument){
+	uint16_t array[10];
+	for (uint8_t i = 0; i < 10; i++){
+		array[i] = 0;
+	}
+	uint8_t pos =  0;
+	uint8_t size=  0;
+
+	for(;;){
+		// Wait for someone to notify
+		xTaskNotifyWait(0,0,NULL, portMAX_DELAY);
+
+		// DO DATA PROCESSING HERE
+//
+		sprintf(usr_msg,"\n\r %d-%d.Current ADC val == %d,", pos, size, adc_value);
+		printMsg(usr_msg);
+
+
+		uint16_t current_value = adc_value;
+
+
+		// Simulate Window shifting average
+		uint16_t sum  = 0;
+
+		if (pos >=10){
+			pos = 0;
+		}
+		else{
+			pos ++;
+		}
+
+		if (size < 10){
+			size ++;
+		}
+
+		array[pos] = current_value;
+
+		for (uint8_t i = 0; i < size; i++){
+			sum += array[i];
+		}
+		uint16_t mean = sum/size;
+
+
+//		int mean = mean_queue(&head_queue, queue_len);
+		sprintf(usr_msg," mean of %d value == %d\r\n", size, mean);
+		printMsg(usr_msg);
+
+		osMailPut(adcQueueHandle, current_value);                         // Send Mail
+		osThreadYield();
+	}
+}
+
+
 
 /**
   * @brief  This function is executed in case of error occurrence.

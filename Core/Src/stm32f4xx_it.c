@@ -72,7 +72,7 @@ extern osThreadId menuDisplayTaskHandle;
 extern osThreadId cmdHandlingTaskHandle;
 extern osThreadId cmdProcessingTaHandle;
 extern osThreadId uartWriteTaskHandle;
-
+extern osThreadId adcHandlingTaskHandle;
 extern void printMsg(char *msg);
 
 /* USER CODE END EV */
@@ -235,21 +235,22 @@ void USART2_IRQHandler(void)
   /* USER CODE END USART2_IRQn 1 */
 }
 
-
 /* USER CODE BEGIN 0 */
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc1)
 {
 	adc_value = HAL_ADC_GetValue(hadc1);
-	char usr_msg[250];
-	sprintf(usr_msg,"\n\r ADC val == %d", adc_value);
-	printMsg(usr_msg);
+//	char usr_msg[50];
+//	sprintf(usr_msg,"\n\r ADC val == %d", adc_value);
+//	printMsg(usr_msg);
 
-	HAL_ADC_Start_IT(hadc1); // Re-Start ADC1 under Interrupt
-                         // this is necessary because we don'use
-                         // the Continuos Conversion Mode
+
+//	HAL_ADC_Start_IT(hadc1); // Re-Start ADC1 under Interrupt
+//					 // this is necessary because we don'use
+//					 // the Continuos Conversion Mode
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xTaskNotifyFromISR(adcHandlingTaskHandle, 0, eNoAction, &xHigherPriorityTaskWoken);
 }
-
 /* USER CODE END 0 */
 
 
@@ -281,7 +282,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //			cmd_buffer[cmd_len-2] = '\0';
 		}
 
-		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-2, 100);
+		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
 		char msg1[50] = "\".\r\n";
 		HAL_UART_Transmit(&huart2, &msg1, sizeof(msg1), 100);
 
