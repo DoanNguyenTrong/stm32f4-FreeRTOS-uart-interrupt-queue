@@ -115,8 +115,7 @@ char menu[] = {"\
 \r\nPERIODIC_ON				----> 3\
 \r\nPERIODIC_OFF			----> 4\
 \r\nLED_READ_STATUS		----> 5\
-\r\nRTC_PRINT_DATETIME		----> 6\
-\r\nEXIT						----> 7\
+\r\nRTC_PRINT_RUNTIME		----> 6\
 \r\nType your option here: "};
 
 
@@ -566,7 +565,7 @@ void preriodic_measure_start(uint16_t *pred){
 	osStatus stus;
 	if (timerHandle == NULL){
 		// Create Software Timer
-		timerHandle = xTimerCreate("pred_timer", pdMS_TO_TICKS(pred), pdTRUE, NULL, periodic_measure);
+		timerHandle = xTimerCreate("pred_timer", pdMS_TO_TICKS(*pred), pdTRUE, NULL, periodic_measure);
 		stus = osTimerStart(timerHandle, portMAX_DELAY);
 	}
 	else{
@@ -575,12 +574,12 @@ void preriodic_measure_start(uint16_t *pred){
 //		sprintf(usr_msg, "\r\nduration=%d\r\n", (int)prev_pred);
 //		osMailPut(uartQueueHandle, &usr_msg );
 
-		xTimerChangePeriod(timerHandle, pdMS_TO_TICKS(pred), portMAX_DELAY);
+		xTimerChangePeriod(timerHandle, pdMS_TO_TICKS(*pred), portMAX_DELAY);
 	}
 
 //	osTimerStart(timerHandle, portMAX_DELAY);
 
-	sprintf(usr_msg, "\r\nPreriodic measurement with duration=%d , SS=%d\r\n", (int)pred, (int)stus);
+	sprintf(usr_msg, "\r\nPreriodic measurement with duration=%d , SS=%d\r\n", (int)*pred, (int)stus);
 	osMailPut(uartQueueHandle, &usr_msg );
 }
 
@@ -596,6 +595,7 @@ void read_led_status(){
 	osMailPut( uartQueueHandle, &usr_msg );
 }
 
+
 void rtc_print_status(){
 	RTC_TimeTypeDef RTC_time;
 	RTC_DateTypeDef RTC_date;
@@ -603,9 +603,11 @@ void rtc_print_status(){
 	HAL_RTC_GetTime( &hrtc, &RTC_time, RTC_FORMAT_BCD);
 	HAL_RTC_GetDate( &hrtc, &RTC_date, RTC_FORMAT_BCD);
 
-	sprintf(usr_msg, "\r\nTime: %02d-%02d-%02d -- Date: %02d-%02d-%02d\r\n",
-          RTC_time.Hours, RTC_time.Minutes, RTC_time.Seconds,
-          RTC_date.Month, RTC_date.Date, RTC_date.Year);
+//	sprintf(usr_msg, "\r\nTime: %02d-%02d-%02d -- Date: %02d-%02d-%02d\r\n",
+//          RTC_time.Hours, RTC_time.Minutes, RTC_time.Seconds,
+//          RTC_date.Month, RTC_date.Date, RTC_date.Year);
+	sprintf(usr_msg, "\r\nRuntime: %02d hr- %02d min- %02d sec\r\n",
+			RTC_time.Hours, RTC_time.Minutes, RTC_time.Seconds);
 	osMailPut(uartQueueHandle, &usr_msg );
 }
 
@@ -625,7 +627,9 @@ uint8_t getCommandCode(uint8_t *buffer){
 	return buffer[0] - 48;  // ASCI char to uint8_t
 }
 
-void getArguments(uint8_t *buffer){
+uint8_t getArguments(uint8_t *buffer){
+	return buffer[0] - 48;  // ASCI char to uint8_t
+
 }
 
 
@@ -651,6 +655,7 @@ void StartMenuTask(void const * argument)
   /* USER CODE END 5 */
 }
 
+
 /* USER CODE BEGIN Header_StartCmdHandling */
 /**
 * @brief Function implementing the cmdHandlingTask thread.
@@ -663,7 +668,7 @@ void StartCmdHandling(void const * argument)
   /* USER CODE BEGIN StartCmdHandling */
   /* Infinite loop */
 	// REF: https://www.keil.com/pack/doc/cmsis/RTOS/html/group__CMSIS__RTOS__Mail.html
-	uint8_t command_code = 0;
+
 	CMD_t *new_cmd;
   for(;;)
   {
@@ -681,35 +686,29 @@ void StartCmdHandling(void const * argument)
 		pos ++;
 	}
 
-	// Display cmd_buffer
-	// DEBUGGING
-//	sprintf(usr_msg, "\r\ncmd_buffer %d-%d-%s.\r\n", pos,(uint8_t)cmd_buffer[pos],cmd_buffer);
-//	printMsg(usr_msg);
 
-
-	command_code = (uint8_t)cmd_buffer[pos] - 48;
-	new_cmd->CMD_NUM = command_code;
+//	command_code = (uint8_t)cmd_buffer[pos] - 48;
+	new_cmd->CMD_NUM = getCommandCode (&cmd_buffer[pos]);
 
 
 	// Open function for future features
 	//getArguments(new_cmd->CMD_ARGS);
 
 	//  set argument
-	new_cmd->CMD_ARGS[0] = (new_cmd->CMD_NUM != 3)? 0:(uint8_t)cmd_buffer[pos+1] - 48;
+	new_cmd->CMD_ARGS[0] = (new_cmd->CMD_NUM != 3)? 0: getArguments( &cmd_buffer[pos+1]);
 	// make sure it in [1, 9]
 	if (new_cmd->CMD_ARGS[0] > 9){
 		new_cmd->CMD_ARGS[0] = 1;
 	}
-
+	taskEXIT_CRITICAL();
 
 	/*
 	 * Show code to screen
 	 */
 
-	sprintf(usr_msg, "\r\nTask in queue: %d\r\n", new_cmd->CMD_NUM);
-	printMsg(usr_msg);
-
-	taskEXIT_CRITICAL();
+//	sprintf(usr_msg, "\r\nTask in queue: %d\r\n", new_cmd->CMD_NUM);
+//	//osMailPut(uartQueueHandle, &usr_msg );
+//	printMsg(usr_msg);
 
 	// Put command to queue
 	osMailPut(cmdQueueHandle, new_cmd);                         // Send Mail
@@ -752,7 +751,7 @@ void StartCmdProcessing(void const * argument)
 			break;
 			case LED_TOGGLE_CMD:
 				pred = (uint16_t)(new_cmd->CMD_ARGS[0]*100);
-				preriodic_measure_start(pred);
+				preriodic_measure_start(&pred);
 				break;
 			case LED_TOGGLE_OFF_CMD:
 				preriodic_measure_stop();
@@ -814,8 +813,9 @@ void StartUartWrite(void const * argument)
 */
 
 void StartAdcHandling(void const * argument){
-	uint16_t array[10];
-	for (uint8_t i = 0; i < 10; i++){
+	uint8_t max_size = 10;
+	uint16_t array[max_size];
+	for (uint8_t i = 0; i < max_size; i++){
 		array[i] = 0;
 	}
 	uint8_t pos =  0;
@@ -827,7 +827,7 @@ void StartAdcHandling(void const * argument){
 
 		// DO DATA PROCESSING HERE
 //
-		sprintf(usr_msg,"\n\r %d-%d.Current ADC val == %d,", pos, size, adc_value);
+		sprintf(usr_msg,"%02d-%02d.Current ADC val == %05d,", pos, size, adc_value);
 		printMsg(usr_msg);
 
 
@@ -837,14 +837,14 @@ void StartAdcHandling(void const * argument){
 		// Simulate Window shifting average
 		uint16_t sum  = 0;
 
-		if (pos >=10){
+		if (pos >=max_size){
 			pos = 0;
 		}
 		else{
 			pos ++;
 		}
 
-		if (size < 10){
+		if (size < max_size){
 			size ++;
 		}
 
@@ -857,10 +857,10 @@ void StartAdcHandling(void const * argument){
 
 
 //		int mean = mean_queue(&head_queue, queue_len);
-		sprintf(usr_msg," mean of %d value == %d\r\n", size, mean);
+		sprintf(usr_msg," mean of %02d value == %05d\r\n", size, mean);
 		printMsg(usr_msg);
 
-		osMailPut(adcQueueHandle, current_value);                         // Send Mail
+		osMailPut(adcQueueHandle, &current_value);                         // Send Mail
 		osThreadYield();
 	}
 }

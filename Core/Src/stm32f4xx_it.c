@@ -272,8 +272,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 	if (byte == '\r'){
 		// Response to confirm message received
-		char msg[50] = "\rYour command is: \"";
-		HAL_UART_Transmit(&huart2, &msg, sizeof(msg), 100);
+		char msg[50] = "\r\nYour command is: \"";
+		HAL_UART_Transmit(&huart2, (uint8_t*)&msg, sizeof(msg), 100);
 
 		// There is a '\n' at cmd_buffer[0]
 		if (cmd_buffer[0] == '\n'){
@@ -282,9 +282,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //			cmd_buffer[cmd_len-2] = '\0';
 		}
 
-		HAL_UART_Transmit(&huart2, &cmd_buffer, cmd_len-1, 100);
+		HAL_UART_Transmit(&huart2, (uint8_t*)&cmd_buffer, cmd_len-1, 100);
 		char msg1[50] = "\".\r\n";
-		HAL_UART_Transmit(&huart2, &msg1, sizeof(msg1), 100);
+		HAL_UART_Transmit(&huart2, (uint8_t*)&msg1, sizeof(msg1), 100);
 
 	    cmd_len = 0;
 
